@@ -40,18 +40,6 @@ def openTaskFile():
         file=open("tasklist.txt", "w")
         file.close()
 
-#function for reading
-# def load_data():
-#     with open('tasklist.txt', 'r') as file:
-#         lines = file.readlines()
-#     return [line.strip() for line in lines]
-
-# def on_select(event):
-#     selected_indices = listbox.curselection()
-#     selected_items = [listbox.get(i) for i in selected_indices]
-#     print("Selected items:", selected_items)
-
-
 from tkinter import PhotoImage
 images_ic=PhotoImage(file="dock.png")
 window.iconphoto(False,images_ic)
@@ -89,9 +77,6 @@ scrollbar.config(command=listbox.xview)
 
 
 data =openTaskFile()
-# for item in data:
-#     listbox.insert(tk.END, item)
-# listbox.bind('<<ListboxSelect>>', on_select)
 
 #delete
 delete_frame=tk.Frame(window, width=400,height=50, bg="#89FFDE")
