@@ -1,88 +1,259 @@
+"""
+Simple To-Do List Application with Tkinter GUI
+A desktop application for managing daily tasks with persistent storage.
+"""
+
 import tkinter as tk
-from tkinter import *
-window=tk.Tk()
-window.title("ToDoList")
-window.geometry("400x650+400+100")
-window.resizable(False,False)
-task_list=[]
-
-def addTask():
-    task= task_entry.get()
-    task_entry.delete(0,END)
-    if task:
-        with open("tasklist.txt","a") as taskfile:
-            taskfile.write(f"\n(task)")
-        task_list.append(task)    
-        listbox.insert(END,task)
-
-def deleteTask():
-    global task_list 
-    task=str(listbox.get(ANCHOR))
-    if task in task_list:
-        task_list.remove(task)
-        with open("tasklist.txt","w") as taskfile:
-            taskfile.write(task+"\n")
-        listbox.delete(ANCHOR)    
+from tkinter import messagebox, scrolledtext
+import json
+import os
+from datetime import datetime
 
 
+class ToDoApp:
+    """Main To-Do List application class"""
 
-def openTaskFile():
+    def __init__(self, root):
+        self.root = root
+        self.root.title("To-Do List Manager")
+        self.root.geometry("500x700+300+50")
+        self.root.resizable(False, False)
+        
+        # Configure style
+        self.root.config(bg="#f0f0f0")
+        
+        self.task_list = []
+        self.tasks_file = "tasks.json"
+        
+        self.setup_ui()
+        self.load_tasks()
 
-    try:
-        global task_list
-        with open("tasklist.txt","r")as taskfile:
-            tasks=taskfile.readline()
-        for task in tasks:
-            if task !='\n':
-                task_list.append(task)    
-                listbox.insert(END,task)
-    except:
-        file=open("tasklist.txt", "w")
-        file.close()
+    def setup_ui(self):
+        """Setup the user interface"""
+        # Header
+        header_frame = tk.Frame(self.root, bg="#4f46e5", height=80)
+        header_frame.pack(fill=tk.X)
+        header_frame.pack_propagate(False)
+        
+        title_label = tk.Label(
+            header_frame, 
+            text="My Tasks", 
+            font=("Arial", 24, "bold"),
+            fg="white",
+            bg="#4f46e5"
+        )
+        title_label.pack(pady=15)
+        
+        subtitle_label = tk.Label(
+            header_frame,
+            text="Stay organized and productive",
+            font=("Arial", 10),
+            fg="rgba(255,255,255,0.8)",
+            bg="#4f46e5"
+        )
+        subtitle_label.pack()
+        
+        # Input frame
+        input_frame = tk.Frame(self.root, bg="white")
+        input_frame.pack(fill=tk.X, padx=10, pady=10)
+        
+        self.task_entry = tk.Entry(
+            input_frame,
+            font=("Arial", 12),
+            width=35,
+            relief=tk.FLAT,
+            bd=1
+        )
+        self.task_entry.pack(side=tk.LEFT, padx=5, pady=5, ipady=8)
+        self.task_entry.bind("<Return>", lambda e: self.add_task())
+        
+        add_btn = tk.Button(
+            input_frame,
+            text="Add",
+            font=("Arial", 11, "bold"),
+            bg="#4f46e5",
+            fg="white",
+            relief=tk.FLAT,
+            width=8,
+            command=self.add_task
+        )
+        add_btn.pack(side=tk.LEFT, padx=5, pady=5)
+        
+        # Stats frame
+        stats_frame = tk.Frame(self.root, bg="#f3f4f6")
+        stats_frame.pack(fill=tk.X, padx=10, pady=5)
+        
+        tk.Label(stats_frame, text="Total:", bg="#f3f4f6", font=("Arial", 10)).pack(side=tk.LEFT, padx=10, pady=8)
+        self.total_label = tk.Label(stats_frame, text="0", bg="#f3f4f6", font=("Arial", 10, "bold"), fg="#4f46e5")
+        self.total_label.pack(side=tk.LEFT, padx=5)
+        
+        tk.Label(stats_frame, text="|", bg="#f3f4f6").pack(side=tk.LEFT, padx=5)
+        
+        tk.Label(stats_frame, text="Completed:", bg="#f3f4f6", font=("Arial", 10)).pack(side=tk.LEFT, padx=10)
+        self.completed_label = tk.Label(stats_frame, text="0", bg="#f3f4f6", font=("Arial", 10, "bold"), fg="#10b981")
+        self.completed_label.pack(side=tk.LEFT, padx=5)
+        
+        tk.Label(stats_frame, text="|", bg="#f3f4f6").pack(side=tk.LEFT, padx=5)
+        
+        tk.Label(stats_frame, text="Pending:", bg="#f3f4f6", font=("Arial", 10)).pack(side=tk.LEFT, padx=10)
+        self.pending_label = tk.Label(stats_frame, text="0", bg="#f3f4f6", font=("Arial", 10, "bold"), fg="#ef4444")
+        self.pending_label.pack(side=tk.LEFT, padx=5)
+        
+        # Listbox frame
+        listbox_frame = tk.Frame(self.root, bg="white")
+        listbox_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        
+        scrollbar = tk.Scrollbar(listbox_frame)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        self.listbox = tk.Listbox(
+            listbox_frame,
+            font=("Arial", 11),
+            relief=tk.FLAT,
+            bd=0,
+            yscrollcommand=scrollbar.set,
+            bg="white",
+            fg="#1f2937",
+            selectmode=tk.SINGLE
+        )
+        self.listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        self.listbox.bind("<Delete>", lambda e: self.delete_task())
+        self.listbox.bind("<Double-Button-1>", lambda e: self.toggle_task())
+        
+        scrollbar.config(command=self.listbox.yview)
+        
+        # Button frame
+        btn_frame = tk.Frame(self.root, bg="#f0f0f0")
+        btn_frame.pack(fill=tk.X, padx=10, pady=10)
+        
+        delete_btn = tk.Button(
+            btn_frame,
+            text="Delete Selected",
+            font=("Arial", 10),
+            bg="#ef4444",
+            fg="white",
+            relief=tk.FLAT,
+            command=self.delete_task
+        )
+        delete_btn.pack(side=tk.LEFT, padx=5, fill=tk.X, expand=True)
+        
+        clear_btn = tk.Button(
+            btn_frame,
+            text="Clear Completed",
+            font=("Arial", 10),
+            bg="#10b981",
+            fg="white",
+            relief=tk.FLAT,
+            command=self.clear_completed
+        )
+        clear_btn.pack(side=tk.LEFT, padx=5, fill=tk.X, expand=True)
 
-from tkinter import PhotoImage
-images_ic=PhotoImage(file="dock.png")
-window.iconphoto(False,images_ic)
+    def add_task(self):
+        """Add a new task"""
+        task_text = self.task_entry.get().strip()
+        
+        if not task_text:
+            messagebox.showwarning("Warning", "Please enter a task!")
+            self.task_entry.focus()
+            return
+        
+        task = {
+            "id": len(self.task_list),
+            "text": task_text,
+            "completed": False,
+            "created_at": datetime.now().isoformat()
+        }
+        
+        self.task_list.append(task)
+        self.task_entry.delete(0, tk.END)
+        self.task_entry.focus()
+        
+        self.save_tasks()
+        self.update_listbox()
+        self.update_stats()
 
-images_ic2=PhotoImage(file="topbar.png",height=587)
-Label(window,image=images_ic2).pack()
+    def delete_task(self):
+        """Delete selected task"""
+        selection = self.listbox.curselection()
+        if not selection:
+            messagebox.showwarning("Warning", "Please select a task to delete!")
+            return
+        
+        if messagebox.askyesno("Confirm", "Delete this task?"):
+            idx = selection[0]
+            self.task_list.pop(idx)
+            self.save_tasks()
+            self.update_listbox()
+            self.update_stats()
 
-heading=Label(window,text="All Task" ,font="arial 20 bold",fg='black',bg="white")
-heading.place(x=135,y=0)
+    def toggle_task(self):
+        """Toggle task completion (double-click)"""
+        selection = self.listbox.curselection()
+        if selection:
+            idx = selection[0]
+            self.task_list[idx]["completed"] = not self.task_list[idx]["completed"]
+            self.save_tasks()
+            self.update_listbox()
+            self.update_stats()
 
-#main
-from tkinter import ttk
-frame= Frame(window,width=340,height=50,bg="#2B65EC")
-frame.place(x=30,y=50)
+    def clear_completed(self):
+        """Remove all completed tasks"""
+        completed = [t for t in self.task_list if t["completed"]]
+        if not completed:
+            messagebox.showinfo("Info", "No completed tasks!")
+            return
+        
+        if messagebox.askyesno("Confirm", f"Delete {len(completed)} completed task(s)?"):
+            self.task_list = [t for t in self.task_list if not t["completed"]]
+            self.save_tasks()
+            self.update_listbox()
+            self.update_stats()
 
-task=StringVar()
-task_entry=Entry(frame,width=15,font="arial 20", bd=0)
-task_entry.place( x=12,y=7)
-task_entry.focus()
+    def update_listbox(self):
+        """Update the task listbox display"""
+        self.listbox.delete(0, tk.END)
+        for task in self.task_list:
+            status = "✓ " if task["completed"] else "○ "
+            display_text = status + task["text"]
+            self.listbox.insert(tk.END, display_text)
 
-button=Button(frame,text="ADD",font="arial 20 bold", width=5,bg="#89FFDE",fg="#fff",bd=0, command=addTask)
-button.place(x=250,y=0)
+    def update_stats(self):
+        """Update statistics display"""
+        total = len(self.task_list)
+        completed = sum(1 for t in self.task_list if t["completed"])
+        pending = total - completed
+        
+        self.total_label.config(text=str(total))
+        self.completed_label.config(text=str(completed))
+        self.pending_label.config(text=str(pending))
 
-# listbox
-frame1=Frame(window,bd=5,width=50,height=150 , bg="red")
-frame1.place(x=29,y=100)
-listbox=Listbox(frame1,font=("arial",12),width=34,height=25,bg="#FFA500",fg="white", cursor="hand2",selectbackground="#32405b")
-listbox.pack(side="left",fill=BOTH,padx=2)
-scrollbar=Scrollbar(frame1)
-scrollbar.pack(side="right",fill=BOTH)
+    def save_tasks(self):
+        """Save tasks to JSON file"""
+        try:
+            with open(self.tasks_file, "w") as f:
+                json.dump(self.task_list, f, indent=2)
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to save tasks: {str(e)}")
 
-listbox.config(yscrollcommand=scrollbar.set)
-scrollbar.config(command=listbox.yview)
-scrollbar.config(command=listbox.xview)
+    def load_tasks(self):
+        """Load tasks from JSON file"""
+        if os.path.exists(self.tasks_file):
+            try:
+                with open(self.tasks_file, "r") as f:
+                    self.task_list = json.load(f)
+                self.update_listbox()
+                self.update_stats()
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to load tasks: {str(e)}")
 
 
-data =openTaskFile()
+def main():
+    """Main application entry point"""
+    root = tk.Tk()
+    app = ToDoApp(root)
+    root.mainloop()
 
-#delete
-delete_frame=tk.Frame(window, width=400,height=50, bg="#89FFDE")
-delete_frame.pack(padx=2,pady=2)
 
-button=Button(delete_frame, text="DELETE",width=20,height=2,bg="lightblue" ,fg="#000000",command=deleteTask)
-button.place( x=120,y=5)
+if __name__ == "__main__":
+    main()
 
-window.mainloop()
